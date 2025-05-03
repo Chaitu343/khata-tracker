@@ -1,0 +1,4 @@
+# pnpm-workspace.yaml
+packages:
+  - 'apps/*' # Tells pnpm our apps live inside the 'apps' folder
+  # You might add 'packages/*' later if you create shared libraries
