@@ -1,0 +1,23 @@
+# khata-tracker/docker-compose.yml
+version: '3.8'
+
+services:
+  postgres_db:
+    image: postgres:15
+    container_name: khata_tracker_db
+    restart: always
+    ports:
+      - "5432:5432" 
+    environment:
+      # These environment variables are used by the PostgreSQL image to initialize the database
+      POSTGRES_USER: chaitanya
+      POSTGRES_PASSWORD: khata,!2025  
+      POSTGRES_DB: khatatracker    
+    volumes:
+      # This creates a named Docker volume called 'postgres_data'
+      # It's used to persist the PostgreSQL data even if the container is removed and recreated.
+      # This means your data won't be lost when you stop/start the container.
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data: # Defines the named volume used above
