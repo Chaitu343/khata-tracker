@@ -5,9 +5,11 @@ import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { winstonConfig } from './common/middelware/winston.logger';
 import { WinstonModule } from 'nest-winston';
+import { join } from 'path';
+import { NestExpressApplication } from '@nestjs/platform-express';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     logger: WinstonModule.createLogger(winstonConfig),
   });
 
@@ -24,6 +26,11 @@ async function bootstrap() {
     whitelist: true,
     transform: true,
   }));
+
+    // Serve files from the 'uploads' directory at the project root
+  app.useStaticAssets(join(process.cwd(), 'uploads'), {
+    prefix: '/uploads/', // Files accessible via http://localhost:3001/uploads/filename.ext
+  });
 
   const port = process.env.PORT || 3001; 
   await app.listen(port);

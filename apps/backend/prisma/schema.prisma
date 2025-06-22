@@ -11,14 +11,16 @@ datasource db {
 }
 
 model User {
-  id           String    @id @default(cuid())
-  email        String    @unique
+  id           String   @id @default(cuid())
+  email        String   @unique
   name         String?
   passwordHash String
-  phoneNo      String? // If you added this
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  contacts     Contact[] // <-- ADD THIS LINE
+  phoneNo      String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  contacts     Contact[]
+  transactions Transaction[] @relation("UserTransactions") // User who initiated transaction
 }
 
 model Contact {
@@ -32,7 +34,29 @@ model Contact {
   ownerId String
   owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
-  @@unique([ownerId, email], name: "ownerId_email_unique")
+  transactions Transaction[] @relation("ContactTransactions") // Transactions related to this contact
+
+  @@unique([ownerId, email], name: "ownerId_email_unique") // Explicitly named for clarity
   @@unique([ownerId, phone], name: "ownerId_phone_unique")
   @@index([ownerId])
+}
+
+model Transaction {
+  id        String   @id @default(cuid())
+  amount    Decimal  @db.Decimal(10, 2) // e.g., 12345678.90
+  type      String // 'GAVE' (contact owes user) or 'GOT' (user owes contact / contact paid user)
+  notes     String?
+  proofUrl  String? // URL to image proof
+  date      DateTime @default(now()) // Date of transaction
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId String // User who owns this transaction record
+  user   User   @relation("UserTransactions", fields: [userId], references: [id], onDelete: Cascade)
+
+  contactId String
+  contact   Contact @relation("ContactTransactions", fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([contactId])
 }
