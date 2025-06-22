@@ -1,11 +1,11 @@
 // apps/frontend/src/app/page.tsx
-'use client';
+"use client";
 
-import { Button } from '@/components/ui/button';
-import { useAuth } from '@/contexts/AuthContext';
-import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
-
+import { Button } from "@/components/ui/button";
+import { useAuth } from "@/contexts/AuthContext";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
 export default function HomePage() {
   const { user, token, isLoading, logout } = useAuth();
@@ -13,7 +13,7 @@ export default function HomePage() {
 
   useEffect(() => {
     if (!isLoading && !token) {
-      router.push('/signin');
+      router.push("/signin");
     }
   }, [isLoading, token, router]);
 
@@ -36,16 +36,31 @@ export default function HomePage() {
               <div className="flex-shrink-0 flex items-center text-xl font-bold text-indigo-600">
                 Khata Tracker
               </div>
+              {user && (
+                <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
+                  <Link
+                    href="/"
+                    className="inline-flex items-center px-1 pt-1 border-b-2 border-indigo-500 text-sm font-medium text-gray-900"
+                  >
+                    Dashboard
+                  </Link>
+                  <Link
+                    href="/contacts"
+                    className="inline-flex items-center px-1 pt-1 border-b-2 border-transparent text-sm font-medium text-gray-500 hover:border-gray-300 hover:text-gray-700"
+                  >
+                    Contacts
+                  </Link>
+                  {/* Add other links here */}
+                </div>
+              )}
             </div>
             <div className="flex items-center">
               {user && (
                 <>
-                  <span className="mr-4 text-sm text-gray-600">Welcome, {user.name || user.email}!</span>
-                  <Button
-                    onClick={logout}
-                    variant="destructive"
-                    size="sm"
-                  >
+                  <span className="mr-4 text-sm text-gray-600">
+                    Welcome, {user.name || user.email}!
+                  </span>
+                  <Button onClick={logout} variant="destructive" size="sm">
                     Logout
                   </Button>
                 </>
@@ -65,8 +80,12 @@ export default function HomePage() {
             {/* Replace with your actual dashboard content */}
             <div className="py-4">
               <div className="border-4 border-dashed border-gray-200 rounded-lg h-96 p-4">
-                <p className="text-gray-700">Your dashboard content will go here.</p>
-                <p className="text-gray-700">Currently logged in as: {user?.email}</p>
+                <p className="text-gray-700">
+                  Your dashboard content will go here.
+                </p>
+                <p className="text-gray-700">
+                  Currently logged in as: {user?.email}
+                </p>
               </div>
             </div>
             {/* /End replace */}
