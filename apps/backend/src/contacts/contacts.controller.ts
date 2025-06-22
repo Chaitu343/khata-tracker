@@ -23,6 +23,7 @@ import { UpdateContactDto } from './dto/update-contact.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ContactsService } from './contacts.service';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { log } from 'console';
 
 @UseGuards(JwtAuthGuard) // Protect all routes in this controller
 @Controller('contacts')
@@ -45,7 +46,8 @@ export class ContactsController {
   }
 
   @Get(':id')
-  findOne(@Param('id', ParseUUIDPipe) id: string, @Request() req) {
+  findOne(@Param('id') id: string, @Request() req) {
+    console.log('id', id);
     // Use ParseUUIDPipe if your IDs are UUIDs (cuid is fine)
     const userId = req.user.id;
     return this.contactsService.findOne(id, userId);

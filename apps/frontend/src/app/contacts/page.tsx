@@ -46,6 +46,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import Link from "next/link";
 
 interface Contact {
   id: string;
@@ -57,7 +58,13 @@ interface Contact {
 }
 
 export default function ContactsPage() {
-  const { token, isLoading: authLoading, user: authUser } = useAuth();
+  const {
+    token,
+    isLoading: authLoading,
+    user: authUser,
+    setContactsList,
+    setSelectedContact,
+  } = useAuth();
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -88,6 +95,16 @@ export default function ContactsPage() {
           a.name.localeCompare(b.name)
         )
       ); // Sort by name
+      setContactsList(
+        response.data.map(
+          (c: { id: string; name: string; email: string; phone: string }) => ({
+            id: c.id,
+            name: c.name,
+            email: c.email,
+            phone: c.phone,
+          })
+        )
+      );
     } catch (err: any) {
       console.error("Failed to fetch contacts:", err);
       setError(err.response?.data?.message || "Failed to load contacts.");
@@ -358,7 +375,6 @@ export default function ContactsPage() {
         <p className="text-center py-10 text-muted-foreground">Loading...</p>
       )}
 
-
       {!isLoading &&
         contacts.length === 0 &&
         !error && ( // Show this only if original contacts array is empty
@@ -404,79 +420,92 @@ export default function ContactsPage() {
                 key={contact.id}
                 className="flex items-center justify-between gap-x-6 p-4 hover:bg-muted/50"
               >
-                <div className="flex min-w-0 gap-x-4">
-                  {/* ... (avatar and name) ... */}
-                  <div className="min-w-0 flex-auto">
-                    <p className="text-sm font-semibold leading-6 text-foreground">
-                      {contact.name}
-                    </p>
-                    {/* Display email or primary contact info */}
-                    {(contact.email || contact.phone) && (
-                      <p className="mt-1 truncate text-xs leading-5 text-muted-foreground flex items-center">
-                        {contact.email ? (
-                          <Mail className="mr-1.5 h-3 w-3 " />
-                        ) : (
-                          <Phone className="mr-1.5 h-3 w-3 " />
-                        )}
-                        {contact.email || contact.phone}
+                <Link
+                  href={`/contacts/${contact.id}`}
+                  onClick={() =>
+                    setSelectedContact({
+                      id: contact.id,
+                      name: contact.name,
+                      email: contact.email,
+                      phone: contact.phone,
+                    })
+                  }
+                  className="block hover:bg-muted/50 -m-4 p-4 rounded-md hover:cursor-pointer"
+                >
+                  <div className="flex min-w-0 gap-x-4">
+                    {/* ... (avatar and name) ... */}
+                    <div className="min-w-0 flex-auto">
+                      <p className="text-sm font-semibold leading-6 text-foreground">
+                        {contact.name}
                       </p>
-                    )}
-                  </div>
-                </div>
-                <div className="flex shrink-0 items-center gap-x-4">
-                  {/* Net Balance Display */}
-                  {typeof contact.netBalance === "number" && (
-                    <div className="hidden sm:flex sm:flex-col sm:items-end">
-                      <p
-                        className={`text-sm font-medium leading-6 ${
-                          contact.netBalance > 0
-                            ? "text-green-600"
-                            : contact.netBalance < 0
-                              ? "text-red-600"
-                              : "text-foreground"
-                        }`}
-                      >
-                        {contact.netBalance >= 0 ? "+" : ""}$
-                        {Math.abs(contact.netBalance).toFixed(2)}
-                      </p>
-                      <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                        {contact.netBalance > 0
-                          ? "Owes you"
-                          : contact.netBalance < 0
-                            ? "You owe"
-                            : "Settled"}
-                      </p>
+                      {/* Display email or primary contact info */}
+                      {(contact.email || contact.phone) && (
+                        <p className="mt-1 truncate text-xs leading-5 text-muted-foreground flex items-center">
+                          {contact.email ? (
+                            <Mail className="mr-1.5 h-3 w-3 " />
+                          ) : (
+                            <Phone className="mr-1.5 h-3 w-3 " />
+                          )}
+                          {contact.email || contact.phone}
+                        </p>
+                      )}
                     </div>
-                  )}
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8">
-                        <MoreHorizontal className="h-4 w-4" />
-                        <span className="sr-only">More options</span>
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem
-                        onClick={() => {
-                          /* Implement edit functionality later, e.g., open edit dialog */
-                          alert(`Edit: ${contact.name}`);
-                        }}
-                      >
-                        <Edit2 className="mr-2 h-4 w-4" />
-                        <span>Edit</span>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() =>
-                          handleDeleteContact(contact.id, contact.name)
-                        }
-                        className="text-destructive focus:text-destructive focus:bg-destructive/10"
-                      >
-                        <Trash2 className="mr-2 h-4 w-4" />
-                        <span>Delete</span>
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-x-4">
+                    {/* Net Balance Display */}
+                    {typeof contact.netBalance === "number" && (
+                      <div className="hidden sm:flex sm:flex-col sm:items-end">
+                        <p
+                          className={`text-sm font-medium leading-6 ${
+                            contact.netBalance > 0
+                              ? "text-green-600"
+                              : contact.netBalance < 0
+                                ? "text-red-600"
+                                : "text-foreground"
+                          }`}
+                        >
+                          {contact.netBalance >= 0 ? "+" : ""}
+                          {Math.abs(contact.netBalance).toFixed(2)}
+                        </p>
+                        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                          {contact.netBalance > 0
+                            ? "Owes you"
+                            : contact.netBalance < 0
+                              ? "You owe"
+                              : "Settled"}
+                        </p>
+                      </div>
+                    )}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                          <MoreHorizontal className="h-4 w-4" />
+                          <span className="sr-only">More options</span>
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onClick={() => {
+                            /* Implement edit functionality later, e.g., open edit dialog */
+                            alert(`Edit: ${contact.name}`);
+                          }}
+                        >
+                          <Edit2 className="mr-2 h-4 w-4" />
+                          <span>Edit</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() =>
+                            handleDeleteContact(contact.id, contact.name)
+                          }
+                          className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          <span>Delete</span>
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </Link>
               </li>
             ))}
           </ul>
