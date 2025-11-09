@@ -16,6 +16,15 @@ model User {
   name         String?
   passwordHash String
   phoneNo      String?
+
+  // Fields for Password Reset
+  passwordResetToken   String?   @unique
+  passwordResetExpires DateTime?
+
+  // Fields for OTP Login
+  otp                  String?
+  otpExpires           DateTime?
+  
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

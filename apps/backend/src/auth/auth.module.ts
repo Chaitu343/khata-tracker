@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthService } from './auth.service';
+import { MailModule } from 'src/mail/mail.module';
 import { AuthController } from './auth.controller';
 import { PassportModule } from '@nestjs/passport';
 import { JwtModule } from '@nestjs/jwt';
@@ -17,6 +18,7 @@ export const jwtConstants = {
   imports: [
     PassportModule,
     LoggerModule,
+    MailModule,
     JwtModule.register({
       secret: jwtConstants.secret,
       signOptions: { expiresIn: '1h' }, // Token expires in 1 hour, adjust as needed
