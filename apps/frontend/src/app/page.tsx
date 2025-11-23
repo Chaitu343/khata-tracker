@@ -1,9 +1,7 @@
 // apps/frontend/src/app/page.tsx
 "use client";
 
-import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
