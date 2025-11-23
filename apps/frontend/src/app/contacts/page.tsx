@@ -24,6 +24,7 @@ import {
   Trash2,
   MoreHorizontal,
   Trash,
+  ArrowUpDown,
 } from "lucide-react"; // Added Search, Edit2, Trash2
 import { useRouter } from "next/navigation";
 import {
@@ -31,6 +32,10 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
 } from "@/components/ui/dropdown-menu"; // For actions
 import { AddContactForm } from "./addContactForm";
 import { toast } from "sonner";
@@ -57,6 +62,8 @@ interface Contact {
   netBalance?: number;
 }
 
+type SortOption = "name-asc" | "owed-desc" | "owe-desc";
+
 export default function ContactsPage() {
   const {
     token,
@@ -70,9 +77,12 @@ export default function ContactsPage() {
   const [error, setError] = useState<string | null>(null);
   const [isAddContactDialogOpen, setIsAddContactDialogOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [sortOption, setSortOption] = useState<SortOption>("name-asc"); // Sorting state
   const [isImporting, setIsImporting] = useState(false);
   const importFileInputRef = React.useRef<HTMLInputElement>(null);
   const [isDeletingAll, setIsDeletingAll] = useState(false);
+
+  const [recentTransactions, setRecentTransactions] = useState<any[]>([]);
 
   const router = useRouter();
 
@@ -87,16 +97,18 @@ export default function ContactsPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await apiClient.get("/contacts", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setContacts(
-        response.data.sort((a: Contact, b: Contact) =>
-          a.name.localeCompare(b.name)
-        )
-      ); // Sort by name
+      const [contactsRes, transactionsRes] = await Promise.all([
+        apiClient.get("/contacts", {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        apiClient.get("/transactions", { // Attempt to fetch all transactions
+          headers: { Authorization: `Bearer ${token}` },
+        }).catch(() => ({ data: [] })) // Fallback to empty if endpoint doesn't exist/fails
+      ]);
+
+      setContacts(contactsRes.data); // Raw data, sorting happens in useMemo
       setContactsList(
-        response.data.map(
+        contactsRes.data.map(
           (c: { id: string; name: string; email: string; phone: string }) => ({
             id: c.id,
             name: c.name,
@@ -105,9 +117,16 @@ export default function ContactsPage() {
           })
         )
       );
+
+      // Process recent transactions
+      if (Array.isArray(transactionsRes.data)) {
+        const sorted = transactionsRes.data.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
+        setRecentTransactions(sorted);
+      }
+
     } catch (err: any) {
-      console.error("Failed to fetch contacts:", err);
-      setError(err.response?.data?.message || "Failed to load contacts.");
+      console.error("Failed to fetch data:", err);
+      setError(err.response?.data?.message || "Failed to load data.");
     } finally {
       setIsLoading(false);
     }
@@ -123,16 +142,35 @@ export default function ContactsPage() {
   };
 
   const filteredContacts = useMemo(() => {
-    if (!searchTerm) {
-      return contacts;
+    let result = contacts;
+
+    // Filter
+    if (searchTerm) {
+      result = result.filter(
+        (contact) =>
+          contact.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          contact.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          contact.phone?.toLowerCase().includes(searchTerm.toLowerCase())
+      );
     }
-    return contacts.filter(
-      (contact) =>
-        contact.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        contact.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        contact.phone?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  }, [contacts, searchTerm]);
+
+    // Sort
+    return result.sort((a, b) => {
+      if (sortOption === "name-asc") {
+        return a.name.localeCompare(b.name);
+      } else if (sortOption === "owed-desc") {
+        return (b.netBalance || 0) - (a.netBalance || 0);
+      } else if (sortOption === "owe-desc") {
+        return (a.netBalance || 0) - (b.netBalance || 0); // Most negative first (lowest value)
+      }
+      return 0;
+    });
+  }, [contacts, searchTerm, sortOption]);
+
+  // Calculate Dashboard Totals
+  const totalYouAreOwed = contacts.reduce((acc, c) => acc + (c.netBalance && c.netBalance > 0 ? c.netBalance : 0), 0);
+  const totalYouOwe = contacts.reduce((acc, c) => acc + (c.netBalance && c.netBalance < 0 ? c.netBalance : 0), 0);
+  const totalNetBalance = totalYouAreOwed + totalYouOwe;
 
   // Placeholder for delete action
   const handleDeleteContact = async (
@@ -261,20 +299,58 @@ export default function ContactsPage() {
   }
 
   return (
-    <div className="container mx-auto p-4 md:p-6">
-      <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
-        <h1 className="text-2xl md:text-3xl font-semibold">Your Contacts</h1>
+    <div className="container mx-auto p-4 md:p-6 space-y-8">
+      {/* Dashboard Summary - Responsive Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-card border rounded-xl p-6 shadow-sm">
+          <p className="text-sm font-medium text-muted-foreground">Total You are Owed</p>
+          <p className="text-2xl font-bold text-green-600 mt-2">+₹{totalYouAreOwed.toFixed(2)}</p>
+        </div>
+        <div className="bg-card border rounded-xl p-6 shadow-sm">
+          <p className="text-sm font-medium text-muted-foreground">Total You Owe</p>
+          <p className="text-2xl font-bold text-red-600 mt-2">-₹{Math.abs(totalYouOwe).toFixed(2)}</p>
+        </div>
+        <div className="bg-card border rounded-xl p-6 shadow-sm">
+          <p className="text-sm font-medium text-muted-foreground">Net Balance</p>
+          <p className={`text-2xl font-bold mt-2 ${totalNetBalance >= 0 ? 'text-foreground' : 'text-red-600'}`}>
+            {totalNetBalance >= 0 ? "+" : "-"}₹{Math.abs(totalNetBalance).toFixed(2)}
+          </p>
+        </div>
+      </div>
+
+      <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+        {/* <h1 className="text-2xl md:text-3xl font-semibold">Your Contacts</h1> */}
+        <div className="relative flex-grow sm:flex-grow-0 sm:w-64">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            type="search"
+            placeholder="Search contacts..."
+            className="pl-10 w-full"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
         <div className="flex w-full sm:w-auto gap-2 items-center">
-          <div className="relative flex-grow sm:flex-grow-0 sm:w-64">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              type="search"
-              placeholder="Search contacts..."
-              className="pl-10 w-full"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            {/* Sort Dropdown */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-1">
+                  <ArrowUpDown className="h-4 w-4" />
+                  Sort
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuLabel>Sort by</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuRadioGroup value={sortOption} onValueChange={(value) => setSortOption(value as SortOption)}>
+                  <DropdownMenuRadioItem value="name-asc">Name (A-Z)</DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="owed-desc">Highest Owed to You</DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="owe-desc">Highest You Owe</DropdownMenuRadioItem>
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
           <input
             type="file"
             accept=".csv"
@@ -363,6 +439,7 @@ export default function ContactsPage() {
             </AlertDialog>
           )}
         </div>
+        </div>
       </div>
 
       {error && (
@@ -407,13 +484,6 @@ export default function ContactsPage() {
 
       {filteredContacts.length > 0 && (
         <div className="bg-card border rounded-lg shadow-sm">
-          {/* Optional Header for the list */}
-          {/* <div className="grid grid-cols-[1fr_auto] sm:grid-cols-[2fr_1fr_1fr_auto] items-center p-4 border-b font-medium text-muted-foreground text-sm">
-            <div>Name</div>
-            <div className="hidden sm:block">Email</div>
-            <div className="hidden sm:block">Phone</div>
-            <div className="text-right">Actions</div>
-          </div> */}
           <ul role="list" className="divide-y divide-border">
             {filteredContacts.map((contact) => (
               <li
@@ -430,15 +500,17 @@ export default function ContactsPage() {
                       phone: contact.phone,
                     })
                   }
-                  className="block hover:bg-muted/50 -m-4 p-4 rounded-md hover:cursor-pointer"
+                  className="block hover:bg-muted/50 -m-4 p-4 rounded-md hover:cursor-pointer w-full"
                 >
+                  <div className="flex items-center justify-between p-4">
                   <div className="flex min-w-0 gap-x-4">
-                    {/* ... (avatar and name) ... */}
+                      <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-lg">
+                        {contact.name.charAt(0).toUpperCase()}
+                      </div>
                     <div className="min-w-0 flex-auto">
                       <p className="text-sm font-semibold leading-6 text-foreground">
                         {contact.name}
-                      </p>
-                      {/* Display email or primary contact info */}
+                        </p>
                       {(contact.email || contact.phone) && (
                         <p className="mt-1 truncate text-xs leading-5 text-muted-foreground flex items-center">
                           {contact.email ? (
@@ -476,39 +548,47 @@ export default function ContactsPage() {
                         </p>
                       </div>
                     )}
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8">
-                          <MoreHorizontal className="h-4 w-4" />
-                          <span className="sr-only">More options</span>
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onClick={() => {
-                            /* Implement edit functionality later, e.g., open edit dialog */
-                            alert(`Edit: ${contact.name}`);
-                          }}
-                        >
-                          <Edit2 className="mr-2 h-4 w-4" />
-                          <span>Edit</span>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() =>
-                            handleDeleteContact(contact.id, contact.name)
-                          }
-                          className="text-destructive focus:text-destructive focus:bg-destructive/10"
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          <span>Delete</span>
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                        onClick={(e) => {
+                          e.preventDefault(); // Prevent navigation
+                          handleDeleteContact(contact.id, contact.name);
+                        }}
+                        title="Delete Contact"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        <span className="sr-only">Delete Contact</span>
+                      </Button>
+                    </div>
                   </div>
                 </Link>
               </li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {/* Recent Activity Section */}
+      {recentTransactions.length > 0 && (
+        <div className="mt-8">
+          <h2 className="text-lg font-semibold mb-4">Recent Activity</h2>
+          <div className="bg-card border rounded-lg shadow-sm">
+            <ul role="list" className="divide-y divide-border">
+              {recentTransactions.map((tx) => (
+                <li key={tx.id} className="p-4 flex justify-between items-center">
+                  <div>
+                    <p className="text-sm font-medium">{tx.contact?.name || "Unknown Contact"}</p>
+                    <p className="text-xs text-muted-foreground">{new Date(tx.date).toLocaleDateString()}</p>
+                  </div>
+                  <div className={`text-sm font-bold ${tx.type === 'GAVE' ? 'text-red-600' : 'text-green-600'}`}>
+                    {tx.type === 'GAVE' ? '-' : '+'}₹{Number(tx.amount).toFixed(2)}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
       )}
     </div>

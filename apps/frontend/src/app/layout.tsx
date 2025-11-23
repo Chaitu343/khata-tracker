@@ -9,7 +9,7 @@ import Navbar from "@/components/ui/layout/Navbar";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Khata Tracker",
+  title: "DueMate",
   description: "Your personal khata book",
 };
 

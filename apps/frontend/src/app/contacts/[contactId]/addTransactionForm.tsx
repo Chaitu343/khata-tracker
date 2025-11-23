@@ -1,7 +1,7 @@
 // apps/frontend/src/components/transactions/AddTransactionForm.tsx
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import apiClient from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -20,11 +20,13 @@ export enum TransactionTypeEnum { // To match backend DTO
 
 interface AddTransactionFormProps {
   contactId: string;
+  initialData?: any; // Add initialData prop
+  defaultValues?: Partial<any>;
   onTransactionAdded: () => void;
   onClose?: () => void;
 }
 
-export function AddTransactionForm({ contactId, onTransactionAdded, onClose }: AddTransactionFormProps) {
+export function AddTransactionForm({ contactId, initialData, defaultValues, onTransactionAdded, onClose }: AddTransactionFormProps) {
   const { token } = useAuth();
   const [amount, setAmount] = useState<string>(''); // Keep as string for input, convert on submit
   const [type, setType] = useState<TransactionTypeEnum>(TransactionTypeEnum.GAVE);
@@ -37,6 +39,20 @@ export function AddTransactionForm({ contactId, onTransactionAdded, onClose }: A
   const [errors, setErrors] = useState<{ [key: string]: string | undefined }>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploadingProof, setIsUploadingProof] = useState(false);
+
+  useEffect(() => {
+    if (initialData) {
+      setAmount(initialData.amount.toString());
+      setType(initialData.type);
+      setNotes(initialData.notes || '');
+      setDate(initialData.date ? new Date(initialData.date) : new Date());
+      setProofUrl(initialData.proofUrl || null);
+    } else if (defaultValues) {
+      if (defaultValues.amount) setAmount(defaultValues.amount.toString());
+      if (defaultValues.type) setType(defaultValues.type);
+      if (defaultValues.notes) setNotes(defaultValues.notes);
+    }
+  }, [initialData, defaultValues]);
 
 
   const validateForm = (): boolean => {
@@ -132,19 +148,27 @@ export function AddTransactionForm({ contactId, onTransactionAdded, onClose }: A
     }
 
     try {
-      await apiClient.post(
-        '/transactions',
-        {
-          amount: parseFloat(amount),
-          type,
-          contactId,
-          notes,
-          proofUrl: finalProofUrl,
-          date: date ? date.toISOString() : undefined,
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      toast.success('Transaction recorded successfully!');
+      const payload = {
+        amount: parseFloat(amount),
+        type,
+        contactId,
+        notes,
+        proofUrl: finalProofUrl,
+        date: date ? date.toISOString() : undefined,
+      };
+
+      if (initialData && initialData.id) {
+        await apiClient.patch(`/transactions/${initialData.id}`, payload, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        toast.success('Transaction updated successfully!');
+      } else {
+        await apiClient.post('/transactions', payload, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        toast.success('Transaction recorded successfully!');
+      }
+
       onTransactionAdded();
       if (onClose) onClose();
       // Reset form can be done here
@@ -156,94 +180,124 @@ export function AddTransactionForm({ contactId, onTransactionAdded, onClose }: A
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      {/* Amount */}
-      <div>
-        <Label htmlFor="transaction-amount" >Amount</Label>
-        <Input
-          id="transaction-amount" type="number" step="0.01" placeholder="0.00"
-          value={amount} onChange={(e) => setAmount(e.target.value)}
-          className={errors.amount ? 'border-destructive' : ''}
-        />
-        {errors.amount && <p className="text-xs text-destructive mt-1">{errors.amount}</p>}
+    <form onSubmit={handleSubmit} className="space-y-6">
+      {/* Amount and Type Row */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="transaction-amount" className="text-sm font-medium">Amount</Label>
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">₹</span>
+            <Input
+              id="transaction-amount" type="number" step="0.01" placeholder="0.00"
+              value={amount} onChange={(e) => setAmount(e.target.value)}
+              className={`pl-7 ${errors.amount ? 'border-destructive' : ''}`}
+            />
+          </div>
+          {errors.amount && <p className="text-xs text-destructive">{errors.amount}</p>}
+        </div>
+
+        <div className="space-y-2">
+          <Label className="text-sm font-medium">Date</Label>
+          <DatePicker date={date} onDateChange={setDate} />
+          {errors.date && <p className="text-xs text-destructive">{errors.date}</p>}
+        </div>
       </div>
 
-      {/* Type */}
-      <div>
-        <Label>Transaction Type</Label>
-        <RadioGroup defaultValue={type} onValueChange={(value: TransactionTypeEnum) => setType(value as TransactionTypeEnum)} className="flex space-x-4 mt-1">
-          <div className="flex items-center space-x-2">
-            <RadioGroupItem value={TransactionTypeEnum.GAVE} id="type-gave" />
-            <Label htmlFor="type-gave">You Gave (Contact owes you)</Label>
+      {/* Transaction Type */}
+      <div className="space-y-3">
+        <Label className="text-sm font-medium">Who paid?</Label>
+        <RadioGroup defaultValue={type} value={type} onValueChange={(value: TransactionTypeEnum) => setType(value as TransactionTypeEnum)} className="grid grid-cols-2 gap-4">
+          <div>
+            <RadioGroupItem value={TransactionTypeEnum.GAVE} id="type-gave" className="peer sr-only" />
+            <Label
+              htmlFor="type-gave"
+              className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-red-500 peer-data-[state=checked]:bg-red-50 [&:has([data-state=checked])]:border-red-500 cursor-pointer transition-all"
+            >
+              <span className="text-lg font-bold text-red-600 mb-1">You Gave</span>
+              <span className="text-xs text-muted-foreground text-center">Contact owes you</span>
+            </Label>
           </div>
-          <div className="flex items-center space-x-2">
-            <RadioGroupItem value={TransactionTypeEnum.GOT} id="type-got" />
-            <Label htmlFor="type-got">You Got (Contact paid you)</Label>
+          <div>
+            <RadioGroupItem value={TransactionTypeEnum.GOT} id="type-got" className="peer sr-only" />
+            <Label
+              htmlFor="type-got"
+              className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-green-500 peer-data-[state=checked]:bg-green-50 [&:has([data-state=checked])]:border-green-500 cursor-pointer transition-all"
+            >
+              <span className="text-lg font-bold text-green-600 mb-1">You Got</span>
+              <span className="text-xs text-muted-foreground text-center">Contact paid you</span>
+            </Label>
           </div>
         </RadioGroup>
       </div>
 
-      {/* Date */}
-      <div>
-        <Label htmlFor="transaction-date">Date</Label>
-        <DatePicker date={date} onDateChange={setDate} /> {/* Use shadcn DatePicker */}
-        {errors.date && <p className="text-xs text-destructive mt-1">{errors.date}</p>}
-      </div>
-
       {/* Notes */}
-      <div>
-        <Label htmlFor="transaction-notes">Notes (Optional)</Label>
+      <div className="space-y-2">
+        <Label htmlFor="transaction-notes" className="text-sm font-medium">Notes (Optional)</Label>
         <Textarea
           id="transaction-notes" value={notes} onChange={(e: { target: { value: React.SetStateAction<string>; }; }) => setNotes(e.target.value)}
           placeholder="e.g., Lunch expenses, Lent for shopping"
+          className="resize-none"
+          rows={3}
         />
       </div>
 
       {/* Proof Upload */}
-      <div>
-        <Label htmlFor="transaction-proof-file">Attach Proof (Optional)</Label>
+      <div className="space-y-2">
+        <Label htmlFor="transaction-proof-file" className="text-sm font-medium">Attach Proof (Optional)</Label>
         {!imagePreviewUrl && !proofUrl && !isUploadingProof && ( // Show input only if no preview/URL
-            <Input
-            id="transaction-proof-file" type="file" onChange={handleFileChange}
-            className="mt-1 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
-            accept=".jpg,.jpeg,.png,.gif,.pdf"
-            />
+          <div className="flex items-center justify-center w-full">
+            <label htmlFor="transaction-proof-file" className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100">
+              <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                <FileUp className="w-8 h-8 mb-3 text-gray-400" />
+                <p className="text-sm text-gray-500"><span className="font-semibold">Click to upload</span> or drag and drop</p>
+                <p className="text-xs text-gray-500">SVG, PNG, JPG or PDF (MAX. 5MB)</p>
+              </div>
+              <Input
+                id="transaction-proof-file" type="file" onChange={handleFileChange}
+                className="hidden"
+                accept=".jpg,.jpeg,.png,.gif,.pdf"
+              />
+            </label>
+          </div>
         )}
         {isUploadingProof && <p className="text-sm text-muted-foreground mt-1">Uploading proof...</p>}
         {errors.proof && <p className="text-xs text-destructive mt-1">{errors.proof}</p>}
 
         {(imagePreviewUrl || proofUrl) && !isUploadingProof && (
-            <div className="mt-2 p-2 border rounded-md flex items-center justify-between">
-            <div className="flex items-center gap-2">
+          <div className="mt-2 p-2 border rounded-md flex items-center justify-between bg-muted/30">
+            <div className="flex items-center gap-3">
                 {imagePreviewUrl ? ( // Prioritize local preview
-                <img src={imagePreviewUrl} alt="Proof preview" className="h-12 w-12 object-cover rounded" />
+                <img src={imagePreviewUrl} alt="Proof preview" className="h-16 w-16 object-cover rounded-md border" />
                 ) : proofUrl?.match(/\.(jpeg|jpg|gif|png)$/i) ? (
-                <img src={proofUrl} alt="Proof preview" className="h-12 w-12 object-cover rounded" />
+                  <img src={proofUrl} alt="Proof preview" className="h-16 w-16 object-cover rounded-md border" />
                 ) : proofUrl ? (
-                <FileText className="h-8 w-8 text-muted-foreground" />
+                    <div className="h-16 w-16 flex items-center justify-center bg-background rounded-md border">
+                      <FileText className="h-8 w-8 text-muted-foreground" />
+                    </div>
                 ) : (
-                <ImageIcon className="h-8 w-8 text-muted-foreground" /> // Fallback if no URL/Preview
+                      <ImageIcon className="h-8 w-8 text-muted-foreground" />
                 )}
-                {proofFile && <span className="text-sm truncate max-w-[150px]">{proofFile.name}</span>}
+              <div className="flex flex-col">
+                <span className="text-sm font-medium truncate max-w-[200px]">{proofFile ? proofFile.name : 'Attached Proof'}</span>
                 {!proofFile && proofUrl &&
-                    <a href={proofUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline truncate max-w-[150px]">
-                        {proofUrl.substring(proofUrl.lastIndexOf('/') + 1)}
-                    </a>
+                  <a href={proofUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline truncate max-w-[200px]">
+                    View Original
+                  </a>
                 }
+              </div>
             </div>
             <Button variant="ghost" size="icon" onClick={removeProof} type="button" className="text-destructive hover:bg-destructive/10">
                 <X className="h-4 w-4" />
             </Button>
             </div>
         )}
-        <p className="text-xs text-muted-foreground mt-1">Max 5MB. JPG, PNG, PDF.</p>
       </div>
 
 
-      <div className="flex justify-end space-x-2 pt-2">
+      <div className="flex justify-end space-x-2 pt-4 border-t">
         {onClose && <Button type="button" variant="outline" onClick={onClose} disabled={isSubmitting || isUploadingProof}>Cancel</Button>}
-        <Button type="submit" disabled={isSubmitting || isUploadingProof}>
-          {isSubmitting ? (isUploadingProof ? 'Uploading...' : 'Saving...') : 'Save Transaction'}
+        <Button type="submit" disabled={isSubmitting || isUploadingProof} className="min-w-[120px]">
+          {isSubmitting ? (isUploadingProof ? 'Uploading...' : 'Saving...') : (initialData ? 'Update' : 'Save Transaction')}
         </Button>
       </div>
     </form>

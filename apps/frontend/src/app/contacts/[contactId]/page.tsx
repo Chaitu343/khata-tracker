@@ -4,31 +4,34 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { useAuth } from "@/contexts/AuthContext"; // Assuming this is your context provider
+import { useAuth } from "@/contexts/AuthContext";
 import apiClient from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { ArrowLeft, PlusCircle, FileText, ExternalLink, UserCircle, Mail, Phone } from "lucide-react"; // Added UserCircle etc.
+import { ArrowLeft, PlusCircle, FileText, Pencil, Trash2, CheckCircle, MoreVertical } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import { AddTransactionForm } from "./addTransactionForm"; // Ensure this path is correct
+import { AddTransactionForm, TransactionTypeEnum } from "./addTransactionForm";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { ContactForm, ContactFormData } from "@/components/contacts/ContactForm";
 
-// Interface for Contact data fetched from backend (includes netBalance)
 interface ContactWithBalance {
   id: string;
   name: string;
   email?: string;
   phone?: string;
-  netBalance: number; // Expect this from /contacts/:id
-  // Add any other fields your /contacts/:id endpoint returns
+  netBalance: number;
 }
 
 interface Transaction {
@@ -41,17 +44,21 @@ interface Transaction {
 }
 
 export default function ContactDetailPage() {
-  const { token, isLoading: authLoading } = useAuth(); // Removed selectedContact related hooks from here
+  const { token, isLoading: authLoading } = useAuth();
   const params = useParams();
   const contactId = params.contactId as string;
   const router = useRouter();
 
-  // Local state for this page's data
   const [contact, setContact] = useState<ContactWithBalance | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [isLoadingPage, setIsLoadingPage] = useState(true); // Single loading state for initial page load
+  const [isLoadingPage, setIsLoadingPage] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isAddTransactionDialogOpen, setIsAddTransactionDialogOpen] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [settleUpValues, setSettleUpValues] = useState<{ amount: string; type: TransactionTypeEnum; notes: string } | null>(null);
+
+  // Edit Contact State
+  const [isEditContactDialogOpen, setIsEditContactDialogOpen] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !token) {
@@ -62,7 +69,7 @@ export default function ContactDetailPage() {
 
   const fetchPageData = useCallback(async () => {
     if (!token || !contactId) {
-        setIsLoadingPage(false); // Stop loading if no token/id
+      setIsLoadingPage(false);
         return;
     }
 
@@ -70,7 +77,6 @@ export default function ContactDetailPage() {
     setError(null);
 
     try {
-      // Fetch contact details and transactions in parallel
       const [contactRes, transRes] = await Promise.all([
         apiClient.get(`/contacts/${contactId}`, {
           headers: { Authorization: `Bearer ${token}` },
@@ -95,25 +101,100 @@ export default function ContactDetailPage() {
 
   useEffect(() => {
     fetchPageData();
-  }, [fetchPageData]); // This will run once when token/contactId are available and on subsequent calls to fetchPageData
-
+  }, [fetchPageData]);
 
   const handleTransactionAdded = () => {
     setIsAddTransactionDialogOpen(false);
-    // Re-fetch all page data to ensure contact's netBalance and transaction list are updated
+    setEditingTransaction(null);
+    setSettleUpValues(null);
     fetchPageData();
   };
 
+  const handleEditTransaction = (transaction: Transaction) => {
+    setEditingTransaction(transaction);
+    setIsAddTransactionDialogOpen(true);
+  };
+
+  const handleDialogClose = () => {
+    setIsAddTransactionDialogOpen(false);
+    setEditingTransaction(null);
+    setSettleUpValues(null);
+  };
+
+  const handleSettleUp = () => {
+    if (!contact) return;
+    const balance = contact.netBalance;
+    if (Math.abs(balance) < 0.01) {
+      toast.info("You are already settled up!");
+      return;
+    }
+    // If balance > 0, they owe you. You need to GET money.
+    // If balance < 0, you owe them. You need to GIVE money.
+    const type = balance > 0 ? TransactionTypeEnum.GOT : TransactionTypeEnum.GAVE;
+    setSettleUpValues({
+      amount: Math.abs(balance).toString(),
+      type: type,
+      notes: "Settling up balance"
+    });
+    setIsAddTransactionDialogOpen(true);
+  };
+
+  const handleDeleteTransaction = async (transactionId: string) => {
+    if (!confirm("Are you sure you want to delete this transaction?")) return;
+
+    try {
+      await apiClient.delete(`/transactions/${transactionId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      toast.success("Transaction deleted successfully");
+      fetchPageData();
+    } catch (error) {
+      console.error("Failed to delete transaction:", error);
+      toast.error("Failed to delete transaction");
+    }
+  };
+
+  const handleUpdateContact = async (data: ContactFormData) => {
+    if (!contact) return;
+    try {
+      await apiClient.patch(`/contacts/${contact.id}`, data, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      toast.success("Contact updated successfully");
+      setIsEditContactDialogOpen(false);
+      fetchPageData();
+    } catch (error: any) {
+      console.error("Failed to update contact:", error);
+      toast.error(error.response?.data?.message || "Failed to update contact");
+    }
+  };
+
+  const handleDeleteContact = async () => {
+    if (!contact) return;
+    if (!confirm(`Are you sure you want to delete ${contact.name}? This cannot be undone.`)) return;
+
+    try {
+      await apiClient.delete(`/contacts/${contact.id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      toast.success("Contact deleted successfully");
+      router.push("/contacts");
+    } catch (error: any) {
+      console.error("Failed to delete contact:", error);
+      toast.error(error.response?.data?.message || "Failed to delete contact");
+    }
+  };
+
+
   if (authLoading || isLoadingPage) {
     return (
-      <div className="container mx-auto p-6 flex justify-center items-center min-h-[calc(100vh-theme(space.16))]"> {/* Adjust 16 based on navbar height */}
-        {/* You can add a spinner component here */}
+      <div className="container mx-auto p-6 flex justify-center items-center min-h-[calc(100vh-theme(space.16))]">
         <p className="text-muted-foreground">Loading contact information...</p>
       </div>
     );
   }
 
-  if (error && !contact) { // If there was an error and no contact data could be loaded
+  if (error && !contact) {
     return (
       <div className="container mx-auto p-6 text-center">
         <p className="text-destructive">{error}</p>
@@ -126,146 +207,200 @@ export default function ContactDetailPage() {
     );
   }
 
-  if (!contact) { // Fallback if no contact and no error (should ideally be covered by isLoading or error state)
+  if (!contact) {
     return <div className="p-6 text-center">Contact not found or could not be loaded.</div>;
   }
 
-  // Use the contact data from the local 'contact' state
   const netBalance = contact.netBalance || 0;
-  const contactName = contact.name || "This Contact"; // Fallback name
+  const contactName = contact.name || "This Contact";
 
   return (
-    <div className="container mx-auto p-4 md:p-6">
+    <div className="container mx-auto p-4 md:p-6 max-w-4xl">
       {/* Header Section */}
-      <div className="mb-8">
+      <div className="mb-6">
         <Link
           href="/contacts"
-          className="inline-flex items-center text-sm text-primary hover:underline mb-4 group"
+          className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-4 transition-colors"
         >
-          <ArrowLeft className="mr-1 h-4 w-4 transition-transform group-hover:-translate-x-1" />
+          <ArrowLeft className="mr-1 h-4 w-4" />
           Back to Contacts
         </Link>
-        <div className="bg-card p-6 rounded-lg shadow-sm border">
-            <div className="flex flex-col md:flex-row justify-between items-start gap-4">
-                <div className="flex items-center gap-4">
-                    <UserCircle className="h-16 w-16 text-muted-foreground" /> {/* Placeholder Icon */}
-                    <div>
-                        <h1 className="text-3xl font-bold text-foreground">{contact.name}</h1>
-                        <div className="text-sm text-muted-foreground mt-1 space-y-0.5">
-                            {contact.email && (
-                                <div className="flex items-center">
-                                    <Mail className="mr-2 h-4 w-4 flex-shrink-0"/>
-                                    <span>{contact.email}</span>
-                                </div>
-                            )}
-                            {contact.phone && (
-                                <div className="flex items-center">
-                                    <Phone className="mr-2 h-4 w-4 flex-shrink-0"/>
-                                    <span>{contact.phone}</span>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
-                <div className="text-left md:text-right w-full md:w-auto mt-4 md:mt-0">
-                    <p className="text-xs text-muted-foreground uppercase tracking-wider">Net Balance</p>
-                    <p
-                    className={`text-3xl font-bold ${
-                        netBalance > 0 ? "text-green-600" : netBalance < 0 ? "text-red-500" : "text-foreground"
-                    }`}
-                    >
-                    {netBalance > 0 ? "+" : netBalance < 0 ? "-" : ""}₹{Math.abs(netBalance).toFixed(2)}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                    {netBalance > 0 ? "Owes you" : netBalance < 0 ? "You owe" : "Settled up"}
-                    </p>
-                </div>
+
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-card p-6 rounded-xl border shadow-sm">
+          <div className="flex items-center gap-4">
+            <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xl">
+              {contact.name.charAt(0).toUpperCase()}
             </div>
+            <div>
+              <h1 className="text-2xl font-bold text-foreground">{contact.name}</h1>
+              <div className="flex gap-3 text-sm text-muted-foreground">
+                {contact.email && <span>{contact.email}</span>}
+                {contact.phone && <span>{contact.phone}</span>}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end">
+            <div className="text-right mr-4">
+              <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Net Balance</p>
+              <p className={`text-2xl font-bold ${netBalance > 0 ? "text-green-600" : netBalance < 0 ? "text-red-600" : "text-muted-foreground"}`}>
+                {netBalance > 0 ? "+" : netBalance < 0 ? "-" : ""}₹{Math.abs(netBalance).toFixed(2)}
+              </p>
+            </div>
+
+            {/* Desktop Actions */}
+            <div className="hidden md:flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => setIsEditContactDialogOpen(true)}>
+                <Pencil className="mr-2 h-4 w-4" /> Edit
+              </Button>
+              <Button variant="destructive" size="sm" onClick={handleDeleteContact}>
+                <Trash2 className="mr-2 h-4 w-4" /> Delete
+              </Button>
+              <Button onClick={handleSettleUp} variant="default" size="sm" className="gap-2" disabled={Math.abs(netBalance) < 0.01}>
+                <CheckCircle className="h-4 w-4" />
+                Settle Up
+              </Button>
+            </div>
+
+            {/* Mobile Actions */}
+            <div className="md:hidden flex items-center gap-2">
+              <Button onClick={handleSettleUp} variant="default" size="sm" className="gap-2" disabled={Math.abs(netBalance) < 0.01}>
+                <CheckCircle className="h-4 w-4" />
+                Settle
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon">
+                    <MoreVertical className="h-5 w-5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => setIsEditContactDialogOpen(true)}>
+                    <Pencil className="mr-2 h-4 w-4" /> Edit Contact
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleDeleteContact} className="text-destructive">
+                    <Trash2 className="mr-2 h-4 w-4" /> Delete Contact
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Add Transaction Button */}
-      <div className="mb-6">
-        <Dialog
-            open={isAddTransactionDialogOpen}
-            onOpenChange={setIsAddTransactionDialogOpen}
-        >
-            <DialogTrigger asChild>
-            <Button
-                onClick={() => setIsAddTransactionDialogOpen(true)}
-                className="w-full sm:w-auto"
-            >
-                <PlusCircle className="mr-2 h-4 w-4" /> Add Transaction
-            </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-                <DialogTitle>Add Transaction for {contactName}</DialogTitle>
-                <DialogDescription>Record a payment or a new amount owed.</DialogDescription>
-            </DialogHeader>
-            <AddTransactionForm
-                contactId={contactId}
-                onTransactionAdded={handleTransactionAdded}
-                onClose={() => setIsAddTransactionDialogOpen(false)}
-            />
-            </DialogContent>
-        </Dialog>
-      </div>
+      {/* Edit Contact Dialog */}
+      <Dialog open={isEditContactDialogOpen} onOpenChange={setIsEditContactDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Contact</DialogTitle>
+            <DialogDescription>Update contact details.</DialogDescription>
+          </DialogHeader>
+          <ContactForm
+            initialData={{
+              name: contact.name,
+              email: contact.email || '',
+              phone: contact.phone || ''
+            }}
+            onSubmit={handleUpdateContact}
+            onCancel={() => setIsEditContactDialogOpen(false)}
+            submitLabel="Save Changes"
+          />
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Transaction Dialog */}
+      <Dialog
+        open={isAddTransactionDialogOpen}
+        onOpenChange={(open) => {
+          setIsAddTransactionDialogOpen(open);
+          if (!open) {
+            setEditingTransaction(null);
+            setSettleUpValues(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{editingTransaction ? 'Edit Transaction' : settleUpValues ? 'Settle Up' : `Add Transaction`}</DialogTitle>
+            <DialogDescription>{editingTransaction ? 'Update transaction details.' : settleUpValues ? 'Clear the outstanding balance.' : 'Record a new transaction.'}</DialogDescription>
+          </DialogHeader>
+          <AddTransactionForm
+            contactId={contactId}
+            initialData={editingTransaction}
+            defaultValues={settleUpValues || undefined}
+            onTransactionAdded={handleTransactionAdded}
+            onClose={handleDialogClose}
+          />
+        </DialogContent>
+      </Dialog>
 
 
-      {/* Transaction History Section */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Transaction History</CardTitle>
-          {transactions.length === 0 && !isLoadingPage && (
-            <CardDescription>No transactions recorded yet for {contactName}.</CardDescription>
-          )}
-        </CardHeader>
-        <CardContent>
-          {isLoadingPage && transactions.length === 0 && ( // Show loading only if transactions aren't there yet
-            <p className="text-muted-foreground text-center py-4">Loading transactions...</p>
-          )}
-          {/* Removed the !isLoadingTransactions condition for no transactions message, handled in CardDescription */}
-          {transactions.length > 0 && (
-            <ul className="space-y-3">
-              {transactions.map((tx) => (
-                <li
-                  key={tx.id}
-                  className="p-4 border rounded-lg hover:shadow-md transition-shadow bg-background"
-                >
-                  <div className="flex flex-col sm:flex-row justify-between items-start gap-2">
-                    <div className="flex-grow">
-                      <p className={`font-semibold text-lg ${tx.type === "GAVE" ? "text-red-600" : "text-green-500"}`}>
-                        {tx.type === "GAVE" ? `You Gave ${contactName}` : `${contactName} Gave You`}
+      {/* Transaction History (Chat Style) */}
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <h2 className="text-lg font-semibold">Transaction History</h2>
+          <Button onClick={() => { setEditingTransaction(null); setIsAddTransactionDialogOpen(true); }} size="sm">
+            <PlusCircle className="mr-2 h-4 w-4" /> Add New
+          </Button>
+        </div>
+
+        {transactions.length === 0 && !isLoadingPage ? (
+          <div className="text-center py-12 border-2 border-dashed rounded-xl">
+            <p className="text-muted-foreground">No transactions yet. Start adding some!</p>
+          </div>
+        ) : (
+          <div className="space-y-4 pb-12">
+            {transactions.map((tx) => {
+              const isGave = tx.type === "GAVE"; // You Gave -> Sent Message (Right)
+              return (
+                <div key={tx.id} className={`flex w-full ${isGave ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[85%] sm:max-w-[70%] rounded-2xl p-4 ${isGave ? 'bg-primary text-primary-foreground rounded-tr-none' : 'bg-muted rounded-tl-none'}`}>
+                    <div className="flex justify-between items-start gap-4 mb-1">
+                      <span className="font-bold text-lg">
+                        ₹{tx.amount.toFixed(2)}
+                      </span>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className={`h-6 w-6 -mr-2 -mt-2 ${isGave ? 'text-primary-foreground/70 hover:text-primary-foreground hover:bg-primary-foreground/10' : 'text-muted-foreground hover:text-foreground'}`}>
+                            <MoreVertical className="h-3 w-3" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align={isGave ? "end" : "start"}>
+                          <DropdownMenuItem onClick={() => handleEditTransaction(tx)}>
+                            <Pencil className="mr-2 h-3 w-3" /> Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleDeleteTransaction(tx.id)} className="text-destructive">
+                            <Trash2 className="mr-2 h-3 w-3" /> Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+
+                    <p className={`text-sm mb-2 ${isGave ? 'text-primary-foreground/90' : 'text-foreground/90'}`}>
+                      {isGave ? `You gave ${contactName}` : `${contactName} gave you`}
+                    </p>
+
+                    {tx.notes && (
+                      <p className={`text-sm italic mb-2 ${isGave ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>
+                        "{tx.notes}"
                       </p>
-                      <p className="text-xs text-muted-foreground mb-1">
-                        {format(new Date(tx.date), "MMM dd, yyyy  ·  hh:mm a")}
-                      </p>
-                      {tx.notes && (
-                        <p className="text-sm text-muted-foreground italic mt-1">“{tx.notes}”</p>
+                    )}
+
+                    <div className={`flex items-center justify-between gap-4 text-xs ${isGave ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
+                      <span>{format(new Date(tx.date), "MMM d, h:mm a")}</span>
+                      {tx.proofUrl && (
+                        <a href={tx.proofUrl} target="_blank" rel="noopener noreferrer" className="flex items-center hover:underline">
+                          <FileText className="h-3 w-3 mr-1" /> Proof
+                        </a>
                       )}
                     </div>
-                    <div className="text-left sm:text-right mt-2 sm:mt-0 flex-shrink-0">
-                        <p className={`text-xl font-bold ${tx.type === "GAVE" ? "text-red-600" : "text-green-500"}`}>
-                            {tx.type === "GAVE" ? "-" : "+"}₹{tx.amount.toFixed(2)}
-                        </p>
-                        {tx.proofUrl && (
-                            <a
-                                href={tx.proofUrl} target="_blank" rel="noopener noreferrer"
-                                className="mt-1 text-xs text-primary hover:underline inline-flex items-center"
-                            >
-                                <FileText className="mr-1 h-3 w-3" /> View Proof
-                                <ExternalLink className="ml-1 h-3 w-3 opacity-70" />
-                            </a>
-                        )}
-                    </div>
                   </div>
-                </li>
-              ))}
-            </ul>
+                </div>
+              );
+            })}
+            </div>
           )}
-        </CardContent>
-      </Card>
+      </div>
     </div>
   );
 }

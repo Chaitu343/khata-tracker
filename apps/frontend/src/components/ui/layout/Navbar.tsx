@@ -1,16 +1,13 @@
-// apps/frontend/src/components/layout/Navbar.tsx
 'use client';
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useAuth } from '@/contexts/AuthContext'; // Or your renamed hook
+import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
-import { Home, Users, LogOut } from 'lucide-react'; // Example icons
+import { Users, LogOut } from 'lucide-react';
 
 const navigation = [
-  { name: 'Dashboard', href: '/', icon: Home },
   { name: 'Contacts', href: '/contacts', icon: Users },
-  // Add other main navigation items here
 ];
 
 function classNames(...classes: string[]) {
@@ -21,18 +18,11 @@ export default function Navbar() {
   const { user, logout } = useAuth();
   const pathname = usePathname();
 
-  if (!user) { // Don't show Navbar if user is not logged in (e.g., on signin/signup pages)
-    // Or, show a limited Navbar for unauthenticated users.
-    // For now, let's assume signin/signup pages have their own minimal layout.
-    // This logic might need adjustment based on how you handle layouts for auth pages.
-    // A common pattern is to have a different layout for auth routes.
-    // For simplicity here, we assume if no user, Navbar is not for them.
-    // A more robust way is to check if pathname is '/signin' or '/signup'.
+  if (!user) {
     if (pathname === '/signin' || pathname === '/signup') {
         return null;
     }
   }
-
 
   return (
     <nav className="bg-white shadow-sm sticky top-0 z-50">
@@ -40,11 +30,11 @@ export default function Navbar() {
         <div className="flex h-16 items-center justify-between">
           <div className="flex items-center">
             <div className="flex-shrink-0">
-              <Link href="/" className="text-xl font-bold text-indigo-600">
-                Khata Tracker
+              <Link href="/" className="text-xl font-bold">
+                <span className='text-[#4F46E5]'>Due</span><span className='text-[#10B981]'>Mate</span>
               </Link>
             </div>
-            {user && ( // Only show main navigation if user is logged in
+            {user && (
               <div className="hidden md:ml-10 md:flex md:items-baseline md:space-x-4">
                 {navigation.map((item) => (
                   <Link
@@ -74,10 +64,8 @@ export default function Navbar() {
               </Button>
             </div>
           )}
-          {/* Add Mobile Menu Button here if needed */}
         </div>
       </div>
-      {/* Mobile menu, show/hide based on menu state (for later) */}
     </nav>
   );
 }
